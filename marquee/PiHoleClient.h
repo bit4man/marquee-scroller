@@ -23,18 +23,24 @@ SOFTWARE.
 
 #pragma once
 #include <ESP8266WiFi.h>
+// #include <WiFiClientSecure.h>
 #include <ESP8266HTTPClient.h>
-#include "libs/ArduinoJson/ArduinoJson.h"
+
+#include <ArduinoJson.h>
 
 class PiHoleClient {
 
 private:
 
-  WiFiClient getSubmitRequest(String apiGetData, String myServer, int myPort);
+  // WiFiClient getSubmitRequest(String apiGetData, String myServer, int myPort);
   void resetClientsBlocked();
   void resetBlockedGraphData();
   
   String errorMessage = "";
+  String httpServer;
+  String server;
+  int port;
+  String apiKey;
 
   int blocked[144] = {0};  
   int blockedCount = 0;
@@ -67,13 +73,15 @@ private:
   } phd;
   
   phd piHoleData;
-  
+  String getStatus(String server, int port, String apiKey);
+  String authGetSid(String apiKey);
   
 public:
   PiHoleClient();
   void getPiHoleData(String server, int port, String apiKey);
   void getGraphData(String server, int port, String apiKey);
   void getTopClientsBlocked(String server, int port, String apiKey);
+  String sid;
 
   String getDomainsBeingBlocked();
   String getDnsQueriesToday();
@@ -81,7 +89,7 @@ public:
   String getAdsPercentageToday();
   String getUniqueClients();
   String getClientsEverSeen();
-  /*
+  
   String getUniqueDomains();
   String getQueriesForwarded();
   String getQueriesCached();  
@@ -92,7 +100,6 @@ public:
   String getReplyIP();
   String getPrivacyLevel();
   
-  */
   String getPiHoleStatus();
   String getError();
 

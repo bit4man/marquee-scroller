@@ -41,7 +41,7 @@ SOFTWARE.
 #include <WiFiManager.h> // --> https://github.com/tzapu/WiFiManager
 #include <ESP8266mDNS.h>
 #include <ArduinoOTA.h>
-#include "FS.h"
+#include "LittleFS.h"
 #include <SPI.h>
 #include <Adafruit_GFX.h> // --> https://github.com/adafruit/Adafruit-GFX-Library
 #include <Max72xxPanel.h> // --> https://github.com/markruys/arduino-Max72xxPanel
@@ -107,13 +107,13 @@ String OctoAuthUser = "";     // only used if you have haproxy or basic athentin
 String OctoAuthPass = "";     // only used with haproxy or basic auth (only needed if you must authenticate)
 
 // Pi-hole Client -- monitor basic stats from your Pi-hole server (see http://pi-hole.net)
-boolean USE_PIHOLE = false;   // Set true to display your Pi-hole details
+boolean USE_PIHOLE = true;   // Set true to display your Pi-hole details
 String PiHoleServer = "";     // IP or Address only (DO NOT include http://)
 int PiHolePort = 80;          // Port of your Pi-hole address (default 80)
 String PiHoleApiKey = "";   // Optional -- only needed to see top blocked clients
 
 boolean ENABLE_OTA = true;    // this will allow you to load firmware to the device over WiFi (see OTA for ESP8266)
-String OTA_Password = "";     // Set an OTA password here -- leave blank if you don't want to be prompted for password
+String OTA_Password = "Dilbert45";     // Set an OTA password here -- leave blank if you don't want to be prompted for password
 
 //******************************
 // End Settings

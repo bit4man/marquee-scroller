@@ -44,6 +44,8 @@
 #define numberOfHours(_time_) (( _time_% SECS_PER_DAY) / SECS_PER_HOUR)
 #define elapsedDays(_time_) ( _time_ / SECS_PER_DAY)
 
+#define DEBUG_ESP_SSL
+
 //declairing prototypes
 void configModeCallback (WiFiManager *myWiFiManager);
 int8_t getWifiQuality();
@@ -158,7 +160,7 @@ static const char PIHOLE_FORM[] PROGMEM = "<form class='w3-container' action='/s
 static const char PIHOLE_TEST[] PROGMEM = "<script>function testPiHole(){var e=document.getElementById(\"PiHoleTest\"),t=document.getElementById(\"piholeAddress\").value,"
                        "n=document.getElementById(\"piholePort\").value,api=document.getElementById(\"piApiToken\").value;;"
                        "if(e.innerHTML=\"\",\"\"==t||\"\"==n)return e.innerHTML=\"* Address and Port are required\","
-                       "void(e.style.background=\"\");var r=\"http://\"+t+\":\"+n;r+=\"/admin/api.php?summary=3&auth=\"+api,window.open(r,\"_blank\").focus()}</script>";
+                       "void(e.style.background=\"\");var r=\"http://\"+t+\":\"+n;r+=\"/api/stats/summary?sid=\"+api,window.open(r,\"_blank\").focus()}</script>";
 
 static const char NEWS_FORM1[] PROGMEM =   "<form class='w3-container' action='/savenews' method='get'><h2>News Configuration:</h2>"
                         "<p><input name='displaynews' class='w3-check w3-margin-top' type='checkbox' %NEWSCHECKED%> Display News Headlines</p>"
@@ -215,8 +217,8 @@ int externalLight = LED_BUILTIN; // LED_BUILTIN is is the built in LED on the We
 
 void setup() {
   Serial.begin(115200);
-  SPIFFS.begin();
-  //SPIFFS.remove(CONFIG);
+  LittleFS.begin();
+  //LittleFS.remove(CONFIG);
   delay(10);
 
   // Initialize digital pin for LED
@@ -432,6 +434,7 @@ void loop() {
         piholeClient.getPiHoleData(PiHoleServer, PiHolePort, PiHoleApiKey);
         piholeClient.getGraphData(PiHoleServer, PiHolePort, PiHoleApiKey);
         if (piholeClient.getPiHoleStatus() != "") {
+          // msg += "    Pi-hole (" + piholeClient.getPiHoleStatus() + "): " + piholeClient.getAdsPercentageToday() + "% "; 
           msg += "    Pi-hole (" + piholeClient.getPiHoleStatus() + "): " + piholeClient.getAdsPercentageToday() + "% "; 
         }
       }
@@ -608,7 +611,7 @@ void handleSystemReset() {
     return server.requestAuthentication();
   }
   Serial.println("Reset System Configuration");
-  if (SPIFFS.remove(CONFIG)) {
+  if (LittleFS.remove(CONFIG)) {
     redirectHome();
     ESP.restart();
   }
@@ -1310,8 +1313,8 @@ void checkDisplay() {
 }
 
 String writeCityIds() {
-  // Save decoded message to SPIFFS file for playback on power up.
-  File f = SPIFFS.open(CONFIG, "w");
+  // Save decoded message to LittleFS file for playback on power up.
+  File f = LittleFS.open(CONFIG, "w");
   if (!f) {
     Serial.println("File open failed!");
   } else {
@@ -1365,12 +1368,12 @@ String writeCityIds() {
 }
 
 void readCityIds() {
-  if (SPIFFS.exists(CONFIG) == false) {
+  if (LittleFS.exists(CONFIG) == false) {
     Serial.println("Settings File does not yet exists.");
     writeCityIds();
     return;
   }
-  File fr = SPIFFS.open(CONFIG, "r");
+  File fr = LittleFS.open(CONFIG, "r");
   String line;
   while (fr.available()) {
     line = fr.readStringUntil('\n');

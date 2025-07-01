@@ -80,14 +80,15 @@ time_t TimeDB::getTime()
   char jsonArray [result.length() + 1];
   result.toCharArray(jsonArray, sizeof(jsonArray));
   jsonArray[result.length() + 1] = '\0';
-  DynamicJsonBuffer json_buf;
-  JsonObject& root = json_buf.parseObject(jsonArray);
+  JsonDocument jdoc;
+  deserializeJson(jdoc, jsonArray);
+  // JsonObject& root = json_buf.parseObject(jsonArray);
   localMillisAtUpdate = millis();
   Serial.println();
-  if (root["timestamp"] == 0) {
+  if (jdoc["timestamp"] == 0) {
     return 20;
   } else {
-    return (unsigned long) root["timestamp"];
+    return (unsigned long) jdoc["timestamp"];
   }
 }
 

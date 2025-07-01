@@ -27,52 +27,219 @@ PiHoleClient::PiHoleClient() {
   //Constructor
 }
 
-void PiHoleClient::getPiHoleData(String server, int port, String apiKey) {
+String PiHoleClient::authGetSid(String apiKey) {
+    sid = "NoAuth";
+    String apiAuth = httpServer + "/api/auth";
+    String authPayload = R"({"password":")" + apiKey + R"("})";
+    WiFiClient client;
+    HTTPClient http;
+    http.addHeader("Content-Type", "application/json");
 
-  WiFiClient wifiClient;
+    // const size_t bufferSize = 2*JSON_OBJECT_SIZE(3) + JSON_OBJECT_SIZE(17) + 470;
+    JsonDocument jdoc;
+
+    Serial.println(apiAuth + " with " + authPayload);
+
+    if (http.begin(client, apiAuth)) {
+      int httpCode = http.POST(authPayload);
+      if (httpCode == 200) {
+        String authReply = http.getString();
+        deserializeJson(jdoc, authReply);
+        // JsonObject& root = jsonBuffer.parseObject(authReply);
+        sid = jdoc["session"]["sid"].as<String>();
+        if (sid.isEmpty()) {
+          Serial.println("SID not found");
+          Serial.println(authReply);
+          http.end();
+          return "AuthError";
+        }
+      } else {
+        Serial.println("Auth Error " + String(httpCode) + " " + http.errorToString(httpCode));
+        http.end();
+        return "AuthError";
+      }
+    }
+    http.end();
+    Serial.println("AUTH successful  SID="+sid);
+    return sid;
+}
+
+String PiHoleClient::getStatus(String server, int port, String apiKey) {
   errorMessage = "";
+  httpServer = "http://" + server + ":" + String(port);
   String response = "";
+  String apiGetData;
 
   if (apiKey == "") {
-    errorMessage = "Pi-hole API Key is required to view Summary Data.";
+    errorMessage = "Pi-hole API Key Password is required to view Summary Data.";
     Serial.println(errorMessage);
-    return;
+    return "NoKey";
   }
 
-  String apiGetData = "http://" + server + ":" + String(port) + "/admin/api.php?summary&auth=" + apiKey;
-  Serial.println("Sending: " + apiGetData);
-  HTTPClient http;  //Object of class HTTPClient
-  http.begin(wifiClient, apiGetData);// get the result
-  int httpCode = http.GET();
+  WiFiClient client;
+
+  HTTPClient http;
+  http.addHeader("Content-Type", "application/json");
+  int httpCode = -1;
+
+  // const size_t bufferSize = 2*JSON_OBJECT_SIZE(3) + JSON_OBJECT_SIZE(17) + 470;
+  JsonDocument jdoc;
+
+  if (sid.isEmpty()) {
+    sid = authGetSid(apiKey);
+  }
+
+  int attempts = 0;
+  do {
+    apiGetData = httpServer + "/api/info/login?sid=" + sid;
+    Serial.println("Attempt "+ String(attempts) + ": Sending: " + apiGetData);
+    if (http.begin(client, apiGetData)) {
+       httpCode = http.GET();
+    } else {
+       Serial.printf("[HTTP] Unable to connect\n");
+       return "No Connect";
+    }
+    attempts++;
+    if (httpCode == 403) {
+      sid = authGetSid(apiKey);
+    }
+  } while ((httpCode != 403) && (httpCode != 200) && (attempts < 3) && (sid != "AuthError"));
+
   //Check the returning code
   if (httpCode > 0) {
     response = http.getString();
-    http.end();   //Close connection
     if (httpCode != 200) {
       // Bad Response Code
       errorMessage = "Error response (" + String(httpCode) + "): " + response;
       Serial.println(errorMessage);
-      return;  
+      http.end();
+      return String(httpCode);  
     }
     Serial.println("Response Code: " + String(httpCode));
-    //Serial.println("Response: " + response);
+    Serial.println("Response: " + response);
   } else {
-    errorMessage = "Failed to connect and get data: " + apiGetData;
+    errorMessage = "Failed to connect and get data: " + http.errorToString(httpCode);
+    Serial.println(errorMessage);
+    http.end();
+    return String(httpCode);
+  }
+
+  // Parse JSON object
+  DeserializationError error = deserializeJson(jdoc, response);
+  // JsonObject& root = jsonBuffer.parseObject(response);
+  if (error) {
+    errorMessage = "Data Summary Parsing failed: " + apiGetData;
+    Serial.println(errorMessage);
+    return "ParseFail";
+  }
+
+  bool isDns = jdoc["dns"];
+  piHoleData.piHoleStatus = isDns ? "Running" : "Stopped";
+  return ( piHoleData.piHoleStatus );
+}
+
+void PiHoleClient::getPiHoleData(String server, int port, String apiKey) {
+  errorMessage = "";
+  httpServer = "http://" + server + ":" + String(port);
+  String response = "";
+  String apiGetData;
+
+  if (apiKey == "") {
+    errorMessage = "Pi-hole API Key Password is required to view Summary Data.";
     Serial.println(errorMessage);
     return;
   }
-  
-  const size_t bufferSize = 2*JSON_OBJECT_SIZE(3) + JSON_OBJECT_SIZE(17) + 470;
-  DynamicJsonBuffer jsonBuffer(bufferSize);
+
+  WiFiClient client;
+
+  HTTPClient http;
+  http.addHeader("Content-Type", "application/json");
+  int httpCode = -1;
+
+  // const size_t bufferSize = 2*JSON_OBJECT_SIZE(3) + JSON_OBJECT_SIZE(17) + 470;
+  JsonDocument jdoc;
+
+  if (sid.isEmpty()) {
+    sid = authGetSid(apiKey);
+  }
+
+  // Serial.printf("HTTP start. FreeHeap: %d\n", ESP.getFreeHeap());
+
+  int attempts = 0;
+  do {
+    apiGetData = httpServer + "/api/stats/summary?sid=" + sid;
+    Serial.println("Attempt "+ String(attempts) + ": Sending: " + apiGetData);
+    if (http.begin(client, apiGetData)) {
+       httpCode = http.GET();
+    } else {
+       Serial.printf("[HTTP] Unable to connect\n");
+       return;
+    }
+    attempts++;
+    if (httpCode == 403) {
+      sid = authGetSid(apiKey);
+    }
+  } while ((httpCode != 403) && (httpCode != 200) && (attempts < 3) && (sid != "AuthError"));
+
+  //Check the returning code
+  if (httpCode > 0) {
+    response = http.getString();
+    if (httpCode != 200) {
+      // Bad Response Code
+      errorMessage = "Error response (" + String(httpCode) + "): " + response;
+      Serial.println(errorMessage);
+      http.end();
+      return;  
+    }
+    Serial.println("Response Code: " + String(httpCode));
+    Serial.println("Response: " + response);
+  } else {
+    errorMessage = "Failed to connect and get data: " + http.errorToString(httpCode);
+    Serial.println(errorMessage);
+    http.end();
+    return;
+  }
 
   // Parse JSON object
-  JsonObject& root = jsonBuffer.parseObject(response);
-  if (!root.success()) {
+  // JsonObject& root = jsonBuffer.parseObject(response);
+  DeserializationError error = deserializeJson(jdoc, response);
+  if (error) {
     errorMessage = "Data Summary Parsing failed: " + apiGetData;
     Serial.println(errorMessage);
     return;
   }
 
+  JsonObject queries = jdoc["queries"];
+  JsonObject gravity = jdoc["gravity"];
+  JsonObject query_types = jdoc["types"];
+  JsonObject clients = jdoc["clients"];
+  JsonObject replies = jdoc["replies"];
+
+  piHoleData.domains_being_blocked = gravity["domains_being_blocked"].as<String>();
+  piHoleData.dns_queries_today     = queries["total"].as<String>();
+  piHoleData.ads_blocked_today     = queries["blocked"].as<String>();
+  piHoleData.ads_percentage_today  = queries["percent_blocked"].as<String>();
+  piHoleData.unique_domains        = queries["unique_domains"].as<String>();
+  piHoleData.queries_forwarded     = queries["forwarded"].as<String>();
+  piHoleData.queries_cached        = queries["cached"].as<String>();
+  piHoleData.clients_ever_seen     = clients["total"].as<String>();
+  piHoleData.unique_clients        = clients["active"].as<String>();
+  unsigned int dnsTotalQueries = 0;
+  for ( auto qt : query_types ) {
+    JsonVariant value = qt.value();
+    dnsTotalQueries += value.as<int>();
+  }
+  piHoleData.dns_queries_all_types = String(dnsTotalQueries);
+  piHoleData.reply_NODATA = replies["NODATA"].as<String>();
+  piHoleData.reply_NXDOMAIN = replies["NXDOMAIN"].as<String>();
+  piHoleData.reply_CNAME = replies["CNAME"].as<String>();
+  piHoleData.reply_IP = replies["IP"].as<String>();
+
+  /* This is not data part of the summary */
+  piHoleData.privacy_level = jdoc["privacy_level"].as<String>();
+  piHoleData.piHoleStatus = jdoc["status"].as<String>();
+
+  /*  Original
   piHoleData.domains_being_blocked = (const char*)root["domains_being_blocked"];
   piHoleData.dns_queries_today = (const char*)root["dns_queries_today"];
   piHoleData.ads_blocked_today = (const char*)root["ads_blocked_today"];
@@ -89,6 +256,7 @@ void PiHoleClient::getPiHoleData(String server, int port, String apiKey) {
   piHoleData.reply_IP = (const char*)root["reply_IP"];
   piHoleData.privacy_level = (const char*)root["privacy_level"];
   piHoleData.piHoleStatus = (const char*)root["status"];
+  */
 
   Serial.println("Pi-Hole Status: " + piHoleData.piHoleStatus);
   Serial.println("Todays Percentage Blocked: " + piHoleData.ads_percentage_today);
@@ -107,8 +275,9 @@ void PiHoleClient::getTopClientsBlocked(String server, int port, String apiKey) 
   }
 
   String response = "";
+  String httpServer = "http://" + server + ":" + String(port);
 
-  String apiGetData = "http://" + server + ":" + String(port) + "/admin/api.php?topClientsBlocked=3&auth=" + apiKey;
+  String apiGetData = httpServer + "/api/stats/top_clients?blocked=true&count=3&sid=" + sid;
   Serial.println("Sending: " + apiGetData);
   HTTPClient http;  //Object of class HTTPClient
   http.begin(wifiClient, apiGetData);// get the result
@@ -131,22 +300,23 @@ void PiHoleClient::getTopClientsBlocked(String server, int port, String apiKey) 
     return;
   }
 
-  const size_t bufferSize = JSON_OBJECT_SIZE(1) + JSON_OBJECT_SIZE(3) + 70;
-  DynamicJsonBuffer jsonBuffer(bufferSize);
+  // const size_t bufferSize = JSON_OBJECT_SIZE(1) + JSON_OBJECT_SIZE(3) + 70;
+  JsonDocument jdoc;
 
   // Parse JSON object
-  JsonObject& root = jsonBuffer.parseObject(response);
-  if (!root.success()) {
+  // JsonObject& root = jsonBuffer.parseObject(response);
+  DeserializationError error = deserializeJson(jdoc, response);
+  if (error) {
     errorMessage = "Data Parsing failed -- verify your Pi-hole API key.";
     Serial.println(errorMessage);
     return;
   }
 
-  JsonObject& blocked = root["top_sources_blocked"];
+  JsonObject blocked = jdoc["top_sources_blocked"];
   int count = 0;
   for (JsonPair p : blocked) {
-    blockedClients[count].clientAddress = (const char*)p.key;
-    blockedClients[count].blockedCount = p.value.as<int>();
+    blockedClients[count].clientAddress = p.key().c_str();
+    blockedClients[count].blockedCount = p.value().as<int>();
     Serial.println("Blocked Client " + String(count+1) + ": " + blockedClients[count].clientAddress + " (" + String(blockedClients[count].blockedCount) + ")");
     count++;
   }
@@ -165,17 +335,19 @@ void PiHoleClient::getGraphData(String server, int port, String apiKey) {
     return;
   }
 
-  String apiGetData = "http://" + server + ":" + String(port) + "/admin/api.php?overTimeData10mins&auth=" + apiKey;
+  String result = "";
+  boolean track = false;
+  int countBracket = 0;
+  blockedCount = 0;
+
+  return; // Disabled for now due to change of pihole API
+
+  String apiGetData = "https://" + server + ":" + String(port) + "/api/.php?overTimeData10mins&auth=" + apiKey;
   resetBlockedGraphData();
   Serial.println("Getting Pi-Hole Graph Data");
   Serial.println(apiGetData);
   http.begin(wifiClient, apiGetData);
   int httpCode = http.GET();
-
-  String result = "";
-  boolean track = false;
-  int countBracket = 0;
-  blockedCount = 0;
 
   if (httpCode > 0) {  // checks for connection
     Serial.printf("[HTTP] GET... code: %d\n", httpCode);
@@ -196,7 +368,7 @@ void PiHoleClient::getGraphData(String server, int port, String apiKey) {
           int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
           for(int i=0;i<c;i++) {
             if (track && countBracket >= 3) {
-              if (buff[i] == ',' || buff[i] == '}' && blockedCount < 144) {
+              if ((buff[i] == ',' || buff[i] == '}') && blockedCount < 144) {
                 blocked[blockedCount] = result.toInt();
                 if (blocked[blockedCount] > blockedHigh) {
                   blockedHigh = blocked[blockedCount];
@@ -274,18 +446,41 @@ String PiHoleClient::getClientsEverSeen() {
   return piHoleData.clients_ever_seen;
 }
 
-/* //Need to add the following
-  String getUniqueDomains();
-  String getQueriesForwarded();
-  String getQueriesCached();
-  String getDnsQueriesAllTypes();
-  String getReplyNODATA();
-  String getReplyNXDOMAIN();
-  String getReplyCNAME();
-  String getReplyIP();
-  String getPrivacyLevel();
- */
+String PiHoleClient::getUniqueDomains() {
+  return piHoleData.unique_domains;
+}
 
+String PiHoleClient::getQueriesForwarded() {
+  return piHoleData.queries_forwarded;
+}
+
+String PiHoleClient::getQueriesCached() {
+  return piHoleData.queries_cached;
+}
+
+String PiHoleClient::getDnsQueriesAllTypes() {
+  return piHoleData.dns_queries_all_types;
+}
+
+String PiHoleClient::getReplyNODATA() {
+  return piHoleData.reply_NODATA;
+}
+
+String PiHoleClient::getReplyNXDOMAIN() {
+  return piHoleData.reply_NXDOMAIN;
+}
+
+String PiHoleClient::getReplyCNAME() {
+  return piHoleData.reply_CNAME;
+}
+
+String PiHoleClient::getReplyIP() {
+  return piHoleData.reply_IP;
+}
+
+String PiHoleClient::getPrivacyLevel() {
+  return piHoleData.privacy_level;
+}
 
 String PiHoleClient::getPiHoleStatus() {
   return piHoleData.piHoleStatus;

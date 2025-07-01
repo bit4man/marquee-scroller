@@ -83,12 +83,13 @@ void OpenWeatherMapClient::updateWeather() {
     return;
   }
 
-  const size_t bufferSize = 710;
-  DynamicJsonBuffer jsonBuffer(bufferSize);
+  // const size_t bufferSize = 710;
+  JsonDocument jdoc;
 
   // Parse JSON object
-  JsonObject& root = jsonBuffer.parseObject(weatherClient);
-  if (!root.success()) {
+  DeserializationError error = deserializeJson(jdoc, weatherClient);
+  // JsonObject& root = jsonBuffer.parseObject(weatherClient);
+  if (error) {
     Serial.println(F("Weather Data Parsing failed!"));
     weathers[0].error = "Weather Data Parsing failed!";
     return;
@@ -96,33 +97,32 @@ void OpenWeatherMapClient::updateWeather() {
 
   weatherClient.stop(); //stop client
 
-  if (root.measureLength() <= 150) {
-    Serial.println("Error Does not look like we got the data.  Size: " + String(root.measureLength()));
+  if (size_t jlen = measureJson(jdoc) <= 150) {
+    Serial.println("Error Does not look like we got the data.  Size: " + String(jlen));
     weathers[0].cached = true;
-    weathers[0].error = (const char*)root["message"];
+    weathers[0].error = jdoc["message"].as<String>();
     Serial.println("Error: " + weathers[0].error);
     return;
   }
-  int count = root["cnt"];
+  int count = jdoc["cnt"];
 
   for (int inx = 0; inx < count; inx++) {
-    weathers[inx].lat = (const char*)root["list"][inx]["coord"]["lat"];
-    weathers[inx].lon = (const char*)root["list"][inx]["coord"]["lon"];
-    weathers[inx].dt = (const char*)root["list"][inx]["dt"];
-    weathers[inx].city = (const char*)root["list"][inx]["name"];
-    weathers[inx].country = (const char*)root["list"][inx]["sys"]["country"];
-    weathers[inx].temp = (const char*)root["list"][inx]["main"]["temp"];
-    weathers[inx].humidity = (const char*)root["list"][inx]["main"]["humidity"];
-    weathers[inx].condition = (const char*)root["list"][inx]["weather"][0]["main"];
-    weathers[inx].wind = (const char*)root["list"][inx]["wind"]["speed"];
-    weathers[inx].weatherId = (const char*)root["list"][inx]["weather"][0]["id"];
-    weathers[inx].description = (const char*)root["list"][inx]["weather"][0]["description"];
-    weathers[inx].icon = (const char*)root["list"][inx]["weather"][0]["icon"];
-    weathers[inx].pressure = (const char*)root["list"][inx]["main"]["pressure"];
-    weathers[inx].direction = (const char*)root["list"][inx]["wind"]["deg"];
-    weathers[inx].high = (const char*)root["list"][inx]["main"]["temp_max"];
-    weathers[inx].low = (const char*)root["list"][inx]["main"]["temp_min"];
-    weathers[inx].timeZone = (const char*)root["list"][inx]["sys"]["timezone"];
+    weathers[inx].lon       = jdoc["list"][inx]["coord"]["lon"].as<String>();
+    weathers[inx].dt        = jdoc["list"][inx]["dt"].as<String>();
+    weathers[inx].city      = jdoc["list"][inx]["name"].as<String>();
+    weathers[inx].country   = jdoc["list"][inx]["sys"]["country"].as<String>();
+    weathers[inx].temp      = jdoc["list"][inx]["main"]["temp"].as<String>();
+    weathers[inx].humidity  = jdoc["list"][inx]["main"]["humidity"].as<String>();
+    weathers[inx].condition = jdoc["list"][inx]["weather"][0]["main"].as<String>();
+    weathers[inx].wind      = jdoc["list"][inx]["wind"]["speed"].as<String>();
+    weathers[inx].weatherId = jdoc["list"][inx]["weather"][0]["id"].as<String>();
+    weathers[inx].description = jdoc["list"][inx]["weather"][0]["description"].as<String>();
+    weathers[inx].icon      = jdoc["list"][inx]["weather"][0]["icon"].as<String>();
+    weathers[inx].pressure  = jdoc["list"][inx]["main"]["pressure"].as<String>();
+    weathers[inx].direction = jdoc["list"][inx]["wind"]["deg"].as<String>();
+    weathers[inx].high      = jdoc["list"][inx]["main"]["temp_max"].as<String>();
+    weathers[inx].low       = jdoc["list"][inx]["main"]["temp_min"].as<String>();
+    weathers[inx].timeZone  = jdoc["list"][inx]["sys"]["timezone"].as<String>();
 
     if (units == "metric") {
       // convert to kph from m/s
