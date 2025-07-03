@@ -34,17 +34,15 @@
 #define BUZZER_PIN  D2
 
 /* Useful Constants */
-#define SECS_PER_MIN  (60UL)
-#define SECS_PER_HOUR (3600UL)
-#define SECS_PER_DAY  (SECS_PER_HOUR * 24L)
+// #define SECS_PER_MIN  (60UL)
+// #define SECS_PER_HOUR (3600UL)
+// #define SECS_PER_DAY  (SECS_PER_HOUR * 24L)
 
 /* Useful Macros for getting elapsed time */
-#define numberOfSeconds(_time_) (_time_ % SECS_PER_MIN)
-#define numberOfMinutes(_time_) ((_time_ / SECS_PER_MIN) % SECS_PER_MIN)
-#define numberOfHours(_time_) (( _time_% SECS_PER_DAY) / SECS_PER_HOUR)
-#define elapsedDays(_time_) ( _time_ / SECS_PER_DAY)
-
-#define DEBUG_ESP_SSL
+// #define numberOfSeconds(_time_) (_time_ % SECS_PER_MIN)
+// #define numberOfMinutes(_time_) ((_time_ / SECS_PER_MIN) % SECS_PER_MIN)
+// #define numberOfHours(_time_) (( _time_% SECS_PER_DAY) / SECS_PER_HOUR)
+// #define elapsedDays(_time_) ( _time_ / SECS_PER_DAY)
 
 //declairing prototypes
 void configModeCallback (WiFiManager *myWiFiManager);
@@ -227,7 +225,7 @@ void setup() {
   //New Line to clear from start garbage
   Serial.println();
 
-  readCityIds();
+  readCityIds();  // This reads all configuraiton data from LittleFS
 
   Serial.println("Number of LED Displays: " + String(numberOfHorizontalDisplays));
   // initialize dispaly
@@ -242,6 +240,8 @@ void setup() {
   Serial.println("matrix created");
   matrix.fillScreen(LOW); // show black
   centerPrint("hello");
+
+  piholeClient = PiHoleClient(PiHoleServer, PiHolePort, PiHoleApiKey); // Data read from LittleFS
 
   tone(BUZZER_PIN, 415, 500);
   delay(500 * 1.3);
@@ -431,8 +431,8 @@ void loop() {
         msg += "(" + printerClient.getProgressCompletion() + "%)  ";
       }
       if (USE_PIHOLE) {
-        piholeClient.getPiHoleData(PiHoleServer, PiHolePort, PiHoleApiKey);
-        piholeClient.getGraphData(PiHoleServer, PiHolePort, PiHoleApiKey);
+        piholeClient.getPiHoleData();
+        piholeClient.getGraphData();
         if (piholeClient.getPiHoleStatus() != "") {
           // msg += "    Pi-hole (" + piholeClient.getPiHoleStatus() + "): " + piholeClient.getAdsPercentageToday() + "% "; 
           msg += "    Pi-hole (" + piholeClient.getPiHoleStatus() + "): " + piholeClient.getAdsPercentageToday() + "% "; 
@@ -561,9 +561,10 @@ void handleSavePihole() {
   PiHoleApiKey = server.arg("piApiToken");
   Serial.println("PiHoleApiKey from save: " + PiHoleApiKey);
   writeCityIds();
+  piholeClient = PiHoleClient(PiHoleServer, PiHolePort, PiHoleApiKey);
   if (USE_PIHOLE) {
-    piholeClient.getPiHoleData(PiHoleServer, PiHolePort, PiHoleApiKey);
-    piholeClient.getGraphData(PiHoleServer, PiHolePort, PiHoleApiKey);
+    piholeClient.getPiHoleData();
+    // piholeClient.getGraphData(PiHoleServer, PiHolePort, PiHoleApiKey);
   }
   redirectHome();
 }
@@ -1572,7 +1573,7 @@ void readCityIds() {
 
 void scrollMessage(String msg) {
   msg += " "; // add a space at the end
-  for ( int i = 0 ; i < width * msg.length() + matrix.width() - 1 - spacer; i++ ) {
+  for ( unsigned int i = 0 ; i < width * msg.length() + matrix.width() - 1 - spacer; i++ ) {
     if (WEBSERVER_ENABLED) {
       server.handleClient();
     }
@@ -1583,11 +1584,11 @@ void scrollMessage(String msg) {
     refresh = 0;
     matrix.fillScreen(LOW);
 
-    int letter = i / width;
+    unsigned int letter = i / width;
     int x = (matrix.width() - 1) - i % width;
     int y = (matrix.height() - 8) / 2; // center the text vertically
 
-    while ( x + width - spacer >= 0 && letter >= 0 ) {
+    while ( x + width - spacer >= 0 ) {
       if ( letter < msg.length() ) {
         matrix.drawChar(x, y, msg[letter], HIGH, LOW, 1);
       }
@@ -1607,7 +1608,7 @@ void drawPiholeGraph() {
     return;
   }
   int count = piholeClient.getBlockedCount();
-  int high = 0;
+  int high = piholeClient.getBlockedHigh();
   int row = matrix.width() - 1;
   int yval = 0;
 
@@ -1618,11 +1619,11 @@ void drawPiholeGraph() {
   }
 
   // get the high value for the sample that will be on the screen
-  for (int inx = count; inx >= totalRows; inx--) {
-    if (piholeClient.getBlockedAds()[inx] > high) {
-      high = (int)piholeClient.getBlockedAds()[inx];
-    }
-  }
+  // for (int inx = count; inx >= totalRows; inx--) {
+  //   if (piholeClient.getBlockedAds()[inx] > high) {
+  //     high = (int)piholeClient.getBlockedAds()[inx];
+  //   }
+  // }
 
   int currentVal = 0;
   for (int inx = (count-1); inx >= totalRows; inx--) {

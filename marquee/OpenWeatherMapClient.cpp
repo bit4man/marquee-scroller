@@ -108,6 +108,7 @@ void OpenWeatherMapClient::updateWeather() {
 
   for (int inx = 0; inx < count; inx++) {
     weathers[inx].lon       = jdoc["list"][inx]["coord"]["lon"].as<String>();
+    weathers[inx].lat       = jdoc["list"][inx]["coord"]["lat"].as<String>();
     weathers[inx].dt        = jdoc["list"][inx]["dt"].as<String>();
     weathers[inx].city      = jdoc["list"][inx]["name"].as<String>();
     weathers[inx].country   = jdoc["list"][inx]["sys"]["country"].as<String>();

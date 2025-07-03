@@ -37,13 +37,13 @@ private:
   void resetBlockedGraphData();
   
   String errorMessage = "";
-  String httpServer;
   String server;
   int port;
   String apiKey;
+  String sid;
 
   int blocked[144] = {0};  
-  int blockedCount = 0;
+  size_t blockedCount = 0;
   int blockedHigh = 0;
 
   typedef struct {
@@ -73,15 +73,16 @@ private:
   } phd;
   
   phd piHoleData;
-  String getStatus(String server, int port, String apiKey);
+  JsonDocument queryApi(String urlPath, String sid);
+  String getStatus();
   String authGetSid(String apiKey);
   
 public:
-  PiHoleClient();
-  void getPiHoleData(String server, int port, String apiKey);
-  void getGraphData(String server, int port, String apiKey);
-  void getTopClientsBlocked(String server, int port, String apiKey);
-  String sid;
+  PiHoleClient() {};
+  PiHoleClient(String server, int port, String apiKey) : server(server), port(port), apiKey(apiKey) {};
+  void getPiHoleData();
+  void getGraphData();
+  void getTopClientsBlocked();
 
   String getDomainsBeingBlocked();
   String getDnsQueriesToday();

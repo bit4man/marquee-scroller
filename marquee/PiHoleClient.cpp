@@ -1,3 +1,4 @@
+#include "ArduinoJson/Array/JsonArray.hpp"
 /** The MIT License (MIT)
 
 Copyright (c) 2018 David Payne
@@ -22,20 +23,105 @@ SOFTWARE.
 */
 
 #include "PiHoleClient.h"
+#include <cmath>
+#include <StreamUtils.h>
 
-PiHoleClient::PiHoleClient() {
-  //Constructor
+JsonDocument PiHoleClient::queryApi(String urlPath, String sid) {
+  errorMessage = "";
+  String httpServer = "http://" + server + ":" + String(port);
+  String response = "";
+  String apiGetData;
+  JsonDocument errordoc;
+  errordoc["isError"] = true;
+  errordoc["errorMsg"] = "No Error";
+
+  if (this->apiKey == "") {
+    errorMessage = "Pi-hole API Key Password is required to view Summary Data.";
+    Serial.println(errorMessage);
+    errordoc["errormsg"] = "NoKey";
+    return errordoc;
+  }
+
+  WiFiClient client;
+
+  HTTPClient http;
+  http.addHeader("Content-Type", "application/json");
+  // For debugging, save header data
+  const char* headerKeys[] = {"Date", "Content-Type", "Content-Length"};
+  size_t headerKeysCount = sizeof(headerKeys) / sizeof(headerKeys[0]);
+  http.collectHeaders(headerKeys, headerKeysCount);
+
+  int httpCode = -1;
+
+  JsonDocument jdoc;
+
+  int attempts = 0;
+  do {
+    apiGetData = httpServer + urlPath + ( urlPath.indexOf('?') > 0 ? "&" : "?") + "sid=" + sid;
+
+    Serial.print("Attempt "+ String(attempts) + ": Using " + apiGetData);
+    if (http.begin(client, apiGetData)) {
+       httpCode = http.GET();
+       Serial.println(" -> (" + String(httpCode) + ")");
+    } else {
+       Serial.printf("\n[HTTP] Unable to connect\n");
+       errordoc["errorMsg"] = "No Connect";
+       return errordoc;
+    }
+    if (httpCode == 403 || httpCode == 401) {
+      Serial.println("Old SID: "  + sid);
+      sid = authGetSid(apiKey);
+    }
+    attempts++;
+  } while ((httpCode != 200) && (attempts < 3));
+
+  //Check the returning code
+  if (httpCode > 0) {
+    response = http.getString();
+    
+    if (httpCode != 200) {
+      // Bad Response Code
+      errorMessage = "Error response (" + String(httpCode) + "): " + response;
+      Serial.println(errorMessage);
+      http.end();
+      errordoc["errorMsg"] = "HTTP Error Code " + String(httpCode);
+      errordoc["httpcode"] = String(httpCode);
+      return errordoc;
+    }
+    // Serial.println("API call response-code: " + String(httpCode));
+    // Serial.println("Response: " + response);
+    Serial.println("API response headers:");
+    for (int i = 0; i < http.headers(); i++) {
+        Serial.print(http.headerName(i));
+        Serial.print(": ");
+        Serial.println(http.header(i));
+    }
+  } else {
+    errorMessage = "Failed to connect and get data: " + http.errorToString(httpCode);
+    Serial.println(errorMessage);
+    http.end();
+    errordoc["errorMsg"] = errorMessage;
+    return errordoc;
+  }
+
+  // Parse JSON object
+  DeserializationError error = deserializeJson(jdoc, response);
+  if (!error) return jdoc;
+  else { 
+    errordoc["errorMsg"] = "Json Parse error: " + String(error.c_str());
+    return errordoc;
+  }
 }
 
 String PiHoleClient::authGetSid(String apiKey) {
+    Serial.println("authGetSid()");
     sid = "NoAuth";
-    String apiAuth = httpServer + "/api/auth";
+    String apiAuth = "http://" + server + ":" + String(port) + "/api/auth";
     String authPayload = R"({"password":")" + apiKey + R"("})";
     WiFiClient client;
     HTTPClient http;
     http.addHeader("Content-Type", "application/json");
 
-    // const size_t bufferSize = 2*JSON_OBJECT_SIZE(3) + JSON_OBJECT_SIZE(17) + 470;
     JsonDocument jdoc;
 
     Serial.println(apiAuth + " with " + authPayload);
@@ -45,7 +131,6 @@ String PiHoleClient::authGetSid(String apiKey) {
       if (httpCode == 200) {
         String authReply = http.getString();
         deserializeJson(jdoc, authReply);
-        // JsonObject& root = jsonBuffer.parseObject(authReply);
         sid = jdoc["session"]["sid"].as<String>();
         if (sid.isEmpty()) {
           Serial.println("SID not found");
@@ -60,154 +145,40 @@ String PiHoleClient::authGetSid(String apiKey) {
       }
     }
     http.end();
-    Serial.println("AUTH successful  SID="+sid);
+    // Serial.println("AUTH successful  SID="+sid);
     return sid;
 }
 
-String PiHoleClient::getStatus(String server, int port, String apiKey) {
-  errorMessage = "";
-  httpServer = "http://" + server + ":" + String(port);
-  String response = "";
-  String apiGetData;
-
-  if (apiKey == "") {
-    errorMessage = "Pi-hole API Key Password is required to view Summary Data.";
-    Serial.println(errorMessage);
-    return "NoKey";
+String PiHoleClient::getStatus() {
+  Serial.println("getStatus()");
+  if (server.isEmpty() || port == 0 || apiKey.isEmpty()) {
+    return "Object Not Initialized";
   }
-
-  WiFiClient client;
-
-  HTTPClient http;
-  http.addHeader("Content-Type", "application/json");
-  int httpCode = -1;
-
-  // const size_t bufferSize = 2*JSON_OBJECT_SIZE(3) + JSON_OBJECT_SIZE(17) + 470;
-  JsonDocument jdoc;
 
   if (sid.isEmpty()) {
     sid = authGetSid(apiKey);
   }
 
-  int attempts = 0;
-  do {
-    apiGetData = httpServer + "/api/info/login?sid=" + sid;
-    Serial.println("Attempt "+ String(attempts) + ": Sending: " + apiGetData);
-    if (http.begin(client, apiGetData)) {
-       httpCode = http.GET();
-    } else {
-       Serial.printf("[HTTP] Unable to connect\n");
-       return "No Connect";
-    }
-    attempts++;
-    if (httpCode == 403) {
-      sid = authGetSid(apiKey);
-    }
-  } while ((httpCode != 403) && (httpCode != 200) && (attempts < 3) && (sid != "AuthError"));
-
-  //Check the returning code
-  if (httpCode > 0) {
-    response = http.getString();
-    if (httpCode != 200) {
-      // Bad Response Code
-      errorMessage = "Error response (" + String(httpCode) + "): " + response;
-      Serial.println(errorMessage);
-      http.end();
-      return String(httpCode);  
-    }
-    Serial.println("Response Code: " + String(httpCode));
-    Serial.println("Response: " + response);
-  } else {
-    errorMessage = "Failed to connect and get data: " + http.errorToString(httpCode);
-    Serial.println(errorMessage);
-    http.end();
-    return String(httpCode);
-  }
-
-  // Parse JSON object
-  DeserializationError error = deserializeJson(jdoc, response);
-  // JsonObject& root = jsonBuffer.parseObject(response);
-  if (error) {
-    errorMessage = "Data Summary Parsing failed: " + apiGetData;
-    Serial.println(errorMessage);
-    return "ParseFail";
-  }
+  JsonDocument jdoc = queryApi("/api/info/login", sid);
 
   bool isDns = jdoc["dns"];
-  piHoleData.piHoleStatus = isDns ? "Running" : "Stopped";
-  return ( piHoleData.piHoleStatus );
+  // piHoleData.piHoleStatus = isDns ? "Running" : "Stopped";
+  return ( isDns ? "Blocking" : "Disabled" );
 }
 
-void PiHoleClient::getPiHoleData(String server, int port, String apiKey) {
-  errorMessage = "";
-  httpServer = "http://" + server + ":" + String(port);
-  String response = "";
-  String apiGetData;
+void PiHoleClient::getPiHoleData() {
+  Serial.println("getPiHoleData()");
 
-  if (apiKey == "") {
-    errorMessage = "Pi-hole API Key Password is required to view Summary Data.";
-    Serial.println(errorMessage);
-    return;
+  if (server.isEmpty() || port == 0 || apiKey.isEmpty()) {
+    Serial.println("Object Not Initialized");
+    return; 
   }
-
-  WiFiClient client;
-
-  HTTPClient http;
-  http.addHeader("Content-Type", "application/json");
-  int httpCode = -1;
-
-  // const size_t bufferSize = 2*JSON_OBJECT_SIZE(3) + JSON_OBJECT_SIZE(17) + 470;
-  JsonDocument jdoc;
 
   if (sid.isEmpty()) {
     sid = authGetSid(apiKey);
   }
 
-  // Serial.printf("HTTP start. FreeHeap: %d\n", ESP.getFreeHeap());
-
-  int attempts = 0;
-  do {
-    apiGetData = httpServer + "/api/stats/summary?sid=" + sid;
-    Serial.println("Attempt "+ String(attempts) + ": Sending: " + apiGetData);
-    if (http.begin(client, apiGetData)) {
-       httpCode = http.GET();
-    } else {
-       Serial.printf("[HTTP] Unable to connect\n");
-       return;
-    }
-    attempts++;
-    if (httpCode == 403) {
-      sid = authGetSid(apiKey);
-    }
-  } while ((httpCode != 403) && (httpCode != 200) && (attempts < 3) && (sid != "AuthError"));
-
-  //Check the returning code
-  if (httpCode > 0) {
-    response = http.getString();
-    if (httpCode != 200) {
-      // Bad Response Code
-      errorMessage = "Error response (" + String(httpCode) + "): " + response;
-      Serial.println(errorMessage);
-      http.end();
-      return;  
-    }
-    Serial.println("Response Code: " + String(httpCode));
-    Serial.println("Response: " + response);
-  } else {
-    errorMessage = "Failed to connect and get data: " + http.errorToString(httpCode);
-    Serial.println(errorMessage);
-    http.end();
-    return;
-  }
-
-  // Parse JSON object
-  // JsonObject& root = jsonBuffer.parseObject(response);
-  DeserializationError error = deserializeJson(jdoc, response);
-  if (error) {
-    errorMessage = "Data Summary Parsing failed: " + apiGetData;
-    Serial.println(errorMessage);
-    return;
-  }
+  JsonDocument jdoc = queryApi("/api/stats/summary", sid);
 
   JsonObject queries = jdoc["queries"];
   JsonObject gravity = jdoc["gravity"];
@@ -218,7 +189,9 @@ void PiHoleClient::getPiHoleData(String server, int port, String apiKey) {
   piHoleData.domains_being_blocked = gravity["domains_being_blocked"].as<String>();
   piHoleData.dns_queries_today     = queries["total"].as<String>();
   piHoleData.ads_blocked_today     = queries["blocked"].as<String>();
-  piHoleData.ads_percentage_today  = queries["percent_blocked"].as<String>();
+  float pct_blocked = queries["percent_blocked"];
+  pct_blocked = std::round(pct_blocked*10)/10;
+  piHoleData.ads_percentage_today  = String(pct_blocked);
   piHoleData.unique_domains        = queries["unique_domains"].as<String>();
   piHoleData.queries_forwarded     = queries["forwarded"].as<String>();
   piHoleData.queries_cached        = queries["cached"].as<String>();
@@ -237,7 +210,7 @@ void PiHoleClient::getPiHoleData(String server, int port, String apiKey) {
 
   /* This is not data part of the summary */
   piHoleData.privacy_level = jdoc["privacy_level"].as<String>();
-  piHoleData.piHoleStatus = jdoc["status"].as<String>();
+  piHoleData.piHoleStatus = getStatus();
 
   /*  Original
   piHoleData.domains_being_blocked = (const char*)root["domains_being_blocked"];
@@ -263,54 +236,21 @@ void PiHoleClient::getPiHoleData(String server, int port, String apiKey) {
   Serial.println();
 }
 
-void PiHoleClient::getTopClientsBlocked(String server, int port, String apiKey) {
-  WiFiClient wifiClient;
-  errorMessage = "";
+void PiHoleClient::getTopClientsBlocked() {
   resetClientsBlocked();
+  Serial.println("getTopClientsBlocked()");
 
-  if (apiKey == "") {
-    errorMessage = "Pi-hole API Key is required to view Top Clients Blocked.";
-    Serial.println(errorMessage);
-    return;
+  if (server.isEmpty() || port == 0 || apiKey.isEmpty()) {
+    Serial.println("Object Not Initialized");
+    return; 
   }
 
-  String response = "";
-  String httpServer = "http://" + server + ":" + String(port);
-
-  String apiGetData = httpServer + "/api/stats/top_clients?blocked=true&count=3&sid=" + sid;
-  Serial.println("Sending: " + apiGetData);
-  HTTPClient http;  //Object of class HTTPClient
-  http.begin(wifiClient, apiGetData);// get the result
-  int httpCode = http.GET();
-  //Check the returning code
-  if (httpCode > 0) {
-    response = http.getString();
-    http.end();   //Close connection
-    if (httpCode != 200) {
-      // Bad Response Code
-      errorMessage = "Error response (" + String(httpCode) + "): " + response;
-      Serial.println(errorMessage);
-      return;  
-    }
-    Serial.println("Response Code: " + String(httpCode));
-    //Serial.println("Response: " + response);
-  } else {
-    errorMessage = "Failed to get data: " + apiGetData;
-    Serial.println(errorMessage);
-    return;
+  if (sid.isEmpty()) {
+    sid = authGetSid(apiKey);
   }
 
   // const size_t bufferSize = JSON_OBJECT_SIZE(1) + JSON_OBJECT_SIZE(3) + 70;
-  JsonDocument jdoc;
-
-  // Parse JSON object
-  // JsonObject& root = jsonBuffer.parseObject(response);
-  DeserializationError error = deserializeJson(jdoc, response);
-  if (error) {
-    errorMessage = "Data Parsing failed -- verify your Pi-hole API key.";
-    Serial.println(errorMessage);
-    return;
-  }
+  JsonDocument jdoc = queryApi("/api/stats/top_clients?blocked=true&count=3", sid);
 
   JsonObject blocked = jdoc["top_sources_blocked"];
   int count = 0;
@@ -323,6 +263,98 @@ void PiHoleClient::getTopClientsBlocked(String server, int port, String apiKey) 
   Serial.println();
 }
 
+/* Get the history of blocked DNS - this data is too large to be put in a String,
+   a stream is used instead of a string 
+*/
+void PiHoleClient::getGraphData() {
+  Serial.println("getGraphData()");
+
+  if (server.isEmpty() || port == 0 || apiKey.isEmpty()) {
+    Serial.println("Object Not Initialized");
+    return; 
+  }
+
+  if (this->apiKey == "") {
+    errorMessage = "Pi-hole API Key Password is required to view Summary Data.";
+    Serial.println(errorMessage);
+    return;
+  }
+
+  if (sid.isEmpty()) {
+    sid = authGetSid(apiKey);
+  }
+
+  // Initialize
+  blockedCount = 0;
+  blockedHigh  = 0;
+  resetBlockedGraphData();
+  String apiGetData = "http://" + server + ":" + String(port) + "/api/history?sid=" + sid;
+
+  WiFiClient client;
+  HTTPClient http;
+  // Ask HTTPClient to collect the Transfer-Encoding header
+  // (by default, it discards all headers)
+  const char* keys[] = {"Transfer-Encoding","Content-Type"};
+  http.collectHeaders(keys, 2);
+  
+  http.addHeader("Content-Type", "application/json");
+
+  int httpCode = -1;
+
+  if (http.begin(client, apiGetData)) {
+      httpCode = http.GET();
+      Serial.println(apiGetData + " -> (" + String(httpCode) + ")");
+  } else {
+      Serial.printf("\n[HTTP] Unable to connect\n");
+      return;
+  }
+
+  Stream& rawStream = http.getStream();
+  ChunkDecodingStream decodedStream(http.getStream());
+  Stream& response = http.header("Transfer-Encoding") == "chunked" ? decodedStream : rawStream;
+  
+  JsonDocument jdoc;
+
+  if (httpCode > 0) {
+    DeserializationError error = deserializeJson(jdoc, response);
+    if (!error) {
+      // Serial.print("jdoc debug: ");
+      // for (int i=0; i<10; i++)  Serial.println(jdoc["history"][i]["blocked"].as<long>());
+
+      JsonArray historyJson = jdoc["history"].as<JsonArray>();
+      size_t sizeOfBlocked = sizeof(blocked) / sizeof(int);
+      // Serial.println("Json size: " + String(historyJson.size()));
+
+      // Serial.println("History record: ");
+      for (auto val : historyJson) {
+        // Serial.print(String(blockedCount) + ", ");
+        if (blockedCount >= sizeOfBlocked) break; // stay inside array size
+        int readblocked = val["blocked"].as<int>();
+        blocked[blockedCount++] = readblocked;
+        blockedHigh = (readblocked > blockedHigh) ? readblocked : blockedHigh;
+      }
+      // historyJson.clear();
+    } else {
+      Serial.print("Deserialization error: ");
+      Serial.println(error.c_str());
+      http.end();
+      return;
+    }
+  } else {
+    Serial.println("History API HTTP failure: " + String(httpCode));
+    http.end();
+    return;
+  }
+
+  http.end();
+
+  Serial.println("\nHigh Value: " + String(blockedHigh));
+  Serial.println("Count: " + String(blockedCount));
+  Serial.println();  
+}
+
+
+/*
 void PiHoleClient::getGraphData(String server, int port, String apiKey) {
   WiFiClient wifiClient;
   HTTPClient http;
@@ -406,6 +438,7 @@ void PiHoleClient::getGraphData(String server, int port, String apiKey) {
   Serial.println("Count: " + String(blockedCount));
   Serial.println();
 }
+*/
 
 void PiHoleClient::resetClientsBlocked() {
   for (int inx = 0; inx < 3; inx++) {
