@@ -92,7 +92,7 @@ PiHole v6 introduced a more modern API key feature, and changed the API formatti
 
 Note, this version of marque-scroller has not been tested with 2FA.
 
-The "test the interface" button on the setting screen has not yet been configured for the POST method to extract a temporary CID. Save your settings, and you should see the web-page populate key data from pihole on the web-page. This means it's working.
+The "test the interface" button on the setting screen has not yet been configured for the POST method to extract a temporary SID. Save your settings, and you should see the web-page populate key data from pihole on the web-page. This means it's working.
 
 Note, the concept of the status of PiHole has changed in v6. Instead of having a dedicated single value, v6 enumerates a status per DNS query type under the heading of 'status'.  To create a single value, the code was changed to /info/login's "dns" property, which indicates if PiHole is set to process DNS requests or not. If it is, a value of "Blocking" is used - if not "Stopped" is used. These values will show up on the marque scroller's PiHole section. Another value that's not mirgraed is "privacy_level" but since the value wasn't used, it remains blank.
 
