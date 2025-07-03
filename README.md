@@ -1,9 +1,17 @@
 # Marquee Scroller (Clock, Weather, News, and More)
 
+Based on the version from Qrome
+
 ## NOTICE
 The latest version of Marquee Scroller 3.01 works with **ESP8266 Core 3.0.2** -- if you are upgrading from Marquee Scroller 2.X version this may require you to enter in all your API Keys and settings.  Always meake sure you have coppied all your API keys somewhere before updating.  The ESP8266 Core 3.0.2 uses the newer FS (file system) that may require a fresh start on the configuration.
 Make sure you update to the latest version of WifiManager library (link below).
 * Removed Bitcoin features in 3.0
+
+## Important changes
+* ArduinoJson upgraded to version 7
+* PiHole v6 supported. Note important change in it's configuration
+* SPIFFS replaced by LittleFS - note, you will need to redo your configuration as it resets your current config
+* The PiHole "graphics" (chart) is reenabled and based on Pihole v6. This option will most likely be removed.
 
 ## Features include:
 * Accurate Clock refresh off Internet Time Servers
@@ -73,8 +81,23 @@ Editing the **Settings.h** file is totally optional and not required.  All API K
 * News API key (free): https://newsapi.org/ -- Optional if you want to get current news headlines.
 * Your OctoPrint API Key -- optional if you use the OctoPrint status.
 * Version 2.0 supports Chained 4x1 LED displays -- configure up to 16x1 in the Settings.h file.  
+* Configure a "password" (API key) in Pihole which is required for pihole configuration                       
 
-NOTE: The settings in the Settings.h are the default settings for the first loading. After loading you will manage changes to the settings via the Web Interface. If you want to change settings again in the settings.h, you will need to erase the file system on the Wemos or use the “Reset Settings” option in the Web Interface.  
+NOTE: The settings in the Settings.h are the default settings for the first loading. After loading you will manage changes to the settings via the Web Interface. If you want to change settings again in the settings.h, you will need to erase the file system on the Wemos or use the “Reset Settings” option in the Web Interface.
+
+## PiHole v6 details
+Given the limited memory of the Wemo d1, support for HTTPS cannot be added. This means an HTTP end point is required. Ensure this is not blocked if you intend to use PiHole.
+
+PiHole v6 introduced a more modern API key feature, and changed the API formatting and features dramatically from prior versions. To connect to your PiHole installation, you must login to the Web Interface and under Settings -> "Web Interface / API" enable the Expert settings (top right) and click "Configure app password" under Advanced Settings. Copy the "new app password" on the popup screen, and click the "Replace App Password" or "Create App Password". This defines a single API key (the "password") that you need to use with Marque-scroller when setting up access.  Note, this does NOT change the password you use to login to the web-interface. Yes, it's confusing.  If you enter this feature and replace the password/key you must change it in the marque-scroller configuration too.
+
+Note, this version of marque-scroller has not been tested with 2FA.
+
+The "test the interface" button on the setting screen has not yet been configured for the POST method to extract a temporary CID. Save your settings, and you should see the web-page populate key data from pihole on the web-page. This means it's working.
+
+Note, the concept of the status of PiHole has changed in v6. Instead of having a dedicated single value, v6 enumerates a status per DNS query type under the heading of 'status'.  To create a single value, the code was changed to /info/login's "dns" property, which indicates if PiHole is set to process DNS requests or not. If it is, a value of "Blocking" is used - if not "Stopped" is used. These values will show up on the marque scroller's PiHole section. Another value that's not mirgraed is "privacy_level" but since the value wasn't used, it remains blank.
+
+The original version used historical "TimeData10mins" to filter out the number of blocked requests. A max of 144 blocks were collected and used to generate the "graphics" bar graph on the scroller. A graphics is generated as "bar graphs" for each entry using the maximum read value to indicate a full bar. Depending on how many matrix displays you have, only the numbers that fits a single display are shown. The rest is ignored. The current history view generates a record every 10 minutes which is used by this version. This means the code will collect up to a full day of historical blocking data, but only show a little more than 5 hours of data on a standard 4 matrix segment display.
+All this means that the graphics is close to useless to understand how much is blocked. If every 10 minutes have just one more blocked request, the graph will show a full bar without showing any increase.  If you use the total number of requests as a max for a percentage, the bar will often just be 1 bar tall (1/8 = 12.5%). Meaning the value of the graph is very little regardless of methodology. For now the feature will remain.  The challenge and why the feature may be removed, is that the amount of data in the response does not fit a single string - the 8266 runs out of memory. This means a streaming trick is used instead, but you're still dealing with storing a lot of data for something that isn't providing the viewer anything productive.  Feel free to add issues/requests with ideas for a better visual to show PiHole activity.
 
 ## Web Interface
 The Marquee Scroller uses the **WiFiManager** so when it can't find the last network it was connected to 
@@ -107,6 +130,7 @@ Daniel Eichhorn -- Author of the TimeClient class (in older versions)
 yanvigdev  
 nashiko-s  
 magnum129  
+bit4man
 
 Contributing to this software is warmly welcomed. You can do this basically by forking from master, committing modifications and then making a pulling requests against the latest DEV branch to be reviewed (follow the links above for operating guide). Detailed comments are encouraged. Adding change log and your contact into file header is encouraged. Thanks for your contribution.
 
