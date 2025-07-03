@@ -51,8 +51,8 @@ Double Wide LED version: https://www.thingiverse.com/thing:2989552
 
 ## Upgrading from version 2.5 or Higher
 In version 2.6 and higher, the binary files that can be uploaded to your marque scrolling clock via the web interface.  From the main menu in the web interface select "Firmware Update" and follow the prompts.
-* **marquee.ino.d1_mini_3.01.bin** - compiled for Wemos D1 Mini and standard 4x1 LED (default)
-* **marquee.ino.d1_mini_wide_3.01.bin** - compiled for Wemos D1 Mini and double wide 8x1 LED display
+* **marquee.ino.d1_mini_3.03.bin** - compiled for Wemos D1 Mini and standard 4x1 LED (default)
+* **marquee.ino.d1_mini_wide_3.03.bin** - compiled for Wemos D1 Mini and double wide 8x1 LED display
 
 ## Compiling and Loading to Wemos D1
 It is recommended to use Arduino IDE.  You will need to configure Arduino IDE to work with the Wemos board and USB port and installed the required USB drivers etc.  
